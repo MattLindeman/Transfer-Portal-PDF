@@ -1,0 +1,136 @@
+---
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+# Reading in the necessary r packages
+library(readxl)
+library(rvest)
+library(dplyr)
+library(tidyverse)
+```
+
+```{r, include=FALSE}
+# Reading in the data
+EvanMiya <- read_excel("EvanMiya.xlsx")
+HDI <- read_excel("HDI Database.xlsx")
+HDI$Name <- paste(HDI$`First Name`, HDI$`Last Name`)
+pnames <- read_excel("3.24.xlsx")
+player_names <- pnames$Player
+```
+
+```{r, echo=FALSE, fig.align='center', fig.height=3, results='asis'}
+for (player_name in player_names) {
+  # Load data for each player
+  player_HDI <- HDI %>% filter(Name == player_name)
+  player_data <- EvanMiya %>% filter(Name == player_name)
+  player_data <- player_data[,c(-1, -9:-15)]
+  player_data$`HDI Rating` <- paste(player_HDI[1,]$RATING)
+  team_name <- player_data$Team
+  
+  # Generate output for each player
+  cat("##", player_name, "from", team_name, "\n\n")
+  
+  cat("### EvanMiya Data and HDI Rating\n\n")
+  print(knitr::kable(player_data, "pipe"))
+  
+  cat("### Comparison to transfer field (based on EvanMiya)\n\n")
+  print(ggplot(data=EvanMiya, mapping=aes(x=OBPR, y=DBPR)) +
+  geom_point() +
+  geom_point(data=player_data, color='red', size = 3) +
+  labs(title = "22-23 Offensive BPR and Defensive BPR",
+       subtitle = "Red Dot Indicates the Player",
+       x = "OBPR",
+       y = "DBPR"))
+  
+  cat("### CBB Reference Data\n\n")
+  # Set the URL of the player's page
+  url <- paste0("https://www.sports-reference.com/cbb/players/", gsub(" ", "-", tolower(player_name)), "-1.html")
+  
+  # Read in the HTML content of the player's page
+  html <- read_html(url)
+  
+  # Extract all tables on the page
+  tables <- html %>% html_nodes("table")
+  
+  # Create an empty list to store the table data
+  table_data_list <- list()
+  
+  # Loop over each table and extract the data
+  for (i in seq_along(tables)) {
+    table_data <- tables[[i]] %>% html_table()
+    table_data_list[[i]] <- table_data
+  }
+  
+  # Create a list to store the table data for the player
+  table_data_by_player <- list()
+  
+  # Associate the table data list with the current player's name
+  table_data_by_player[[player_name]] <- table_data_list
+  
+  cat("#### Per Game\n\n")
+  pergame <- as.data.frame(table_data_by_player[[1]][1])
+  pergame <- pergame[,c(-3,-28)]
+  print(knitr::kable(pergame[, 1:13], "pipe"))
+  print(knitr::kable(pergame[, 14:26], "pipe"))
+  
+  cat("#### Per 40 Minutes\n\n")
+  per40 <- as.data.frame(table_data_by_player[[1]][5])
+  per40 <- per40[,-3]
+  print(knitr::kable(per40[, 1:12], "pipe"))
+  print(knitr::kable(per40[, 13:23], "pipe"))
+  
+  cat("#### Advanced\n\n")
+  adv <- as.data.frame(table_data_by_player[[1]][9])
+  adv <- adv[,c(-3,-21, -26)]
+  print(knitr::kable(adv[, 1:13], "pipe"))
+  print(knitr::kable(adv[, 14:25], "pipe"))
+  
+  cat("### Barttorvik Data\n\n")
+  
+  # Set URL of the website
+  url <- "https://barttorvik.com/playerstat.php"
+
+  # Encode the player name and team name to include them in the URL
+  encoded_player_name <- URLencode(player_name)
+  encoded_team_name <- URLencode(team_name)
+
+  # Set the URL of the player's stats page
+  player_url <- paste0(url, "?year=2023&p=", encoded_player_name, "&t=", encoded_team_name)
+
+  # Read HTML content from the player's stats page
+  html <- read_html(player_url)
+
+  # Extract the second table on the page (index 2)
+  player_table <- html %>%
+    html_nodes("table") %>%
+    .[[1]] %>%
+    html_table()
+
+  # Changing column names
+  names(player_table)[26] <- 'FTT'
+  names(player_table)[28] <- '2PT'
+  names(player_table)[30] <- '3PT'
+  names(player_table)[32] <- 'Temp'
+  names(player_table)[33] <- 'Temp2'
+
+  player_table <- player_table[,1:33]
+
+  conam <- names(player_table)[1:31]
+
+  temp_table <- player_table %>%
+    filter(grepl("^\\d", Yr)) %>%
+    .[,-32:-33]
+
+  temp2_table <- player_table %>% 
+    filter(grepl("games", Yr)) %>%
+    .[,-1:-2]
+
+  colnames(temp2_table) <- conam
+
+  print(knitr::kable(temp_table[, c(1:3, 7:16)]))
+
+  cat('\\pagebreak')
+}
+```
+
